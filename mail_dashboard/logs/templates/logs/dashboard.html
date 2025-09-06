@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mail Log Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .stats { display: flex; flex-wrap: wrap; margin-bottom: 20px; }
+        .stat-box { border: 1px solid #ddd; padding: 15px; margin-right: 15px; margin-bottom: 15px; border-radius: 5px; min-width: 150px; }
+        .stat-value { font-size: 24px; font-weight: bold; }
+        .chart-container { margin-bottom: 30px; max-width: 800px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .section { margin-bottom: 30px; }
+        .date-range { color: #666; font-style: italic; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Mail Server Statistics</h1>
+    
+    <div class="date-range" id="dateRange">
+        Loading date range...
+    </div>
+    
+    <div class="stats">
+        <div class="stat-box">
+            <div class="stat-label">Total Messages</div>
+            <div class="stat-value">{{ total_messages }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Sent Messages</div>
+            <div class="stat-value">{{ sent_messages }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Bounced Messages</div>
+            <div class="stat-value">{{ bounced_messages }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Rejected Messages</div>
+            <div class="stat-value">{{ rejected_messages }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Auth Failures</div>
+            <div class="stat-value">{{ auth_failures }}</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <h2>Messages by Status</h2>
+        <canvas id="statusChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h2>Messages by Hour of Day</h2>
+        <canvas id="hourlyChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h2>Messages by Date</h2>
+        <canvas id="dailyChart"></canvas>
+    </div>
+
+    <div class="section">
+        <h2>Top Senders</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Sender</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sender in top_senders %}
+                <tr>
+                    <td>{{ sender.from_email }}</td>
+                    <td>{{ sender.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Top Recipients</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Recipient</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for recipient in top_recipients %}
+                <tr>
+                    <td>{{ recipient.to_email }}</td>
+                    <td>{{ recipient.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Recent Messages</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Status</th>
+                    <th>Process</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for message in recent_messages %}
+                <tr>
+                    <td>{{ message.timestamp }}</td>
+                    <td>{{ message.from_email }}</td>
+                    <td>{{ message.to_email }}</td>
+                    <td>{{ message.status }}</td>
+                    <td>{{ message.process }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Загрузка данных через AJAX
+        fetch('/chart-data/')
+            .then(response => response.json())
+            .then(data => {
+                // Обновляем информацию о диапазоне дат
+                document.getElementById('dateRange').textContent = 
+                    `Data range: ${data.date_range || 'All available data'}`;
+                
+                // Status Chart
+                if (data.status_data.length > 0) {
+                    new Chart(document.getElementById('statusChart'), {
+                        type: 'pie',
+                        data: {
+                            labels: data.status_labels,
+                            datasets: [{
+                                data: data.status_data,
+                                backgroundColor: [
+                                    '#ff6384', '#36a2eb', '#cc65fe', '#ffce56',
+                                    '#4bc0c0', '#9966ff', '#ff9f40', '#ffcd56'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    position: 'right',
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Messages by Status'
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('statusChart').innerHTML = '<p>No status data available</p>';
+                }
+
+                // Hourly Chart
+                if (data.hourly_data.some(val => val > 0)) {
+                    new Chart(document.getElementById('hourlyChart'), {
+                        type: 'bar',
+                        data: {
+                            labels: data.hourly_labels,
+                            datasets: [{
+                                label: 'Messages per hour',
+                                data: data.hourly_data,
+                                backgroundColor: '#36a2eb',
+                                borderColor: '#36a2eb',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Messages'
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Hour of Day'
+                                    }
+                                }
+                            },
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Messages by Hour of Day'
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('hourlyChart').innerHTML = '<p>No hourly data available</p>';
+                }
+
+                // Daily Chart
+                if (data.daily_data.length > 0) {
+                    new Chart(document.getElementById('dailyChart'), {
+                        type: 'line',
+                        data: {
+                            labels: data.daily_labels,
+                            datasets: [{
+                                label: 'Messages per day',
+                                data: data.daily_data,
+                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Messages'
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Date'
+                                    }
+                                }
+                            },
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Messages by Day'
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('dailyChart').innerHTML = '<p>No daily data available</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching chart data:', error);
+                document.getElementById('statusChart').innerHTML = '<p>Error loading chart data</p>';
+                document.getElementById('hourlyChart').innerHTML = '<p>Error loading chart data</p>';
+                document.getElementById('dailyChart').innerHTML = '<p>Error loading chart data</p>';
+            });
+    </script>
+</body>
+</html>
